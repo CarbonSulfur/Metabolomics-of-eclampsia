@@ -171,10 +171,65 @@ def peak_extract(patient):
     }
     return extracted_patient
 
+def fit_peaks(patient):
+    # 多峰高斯拟合
+    def multi_gaussian(x, *params):
+        y = np.zeros_like(x)
+        for i in range(0, len(params), 3):
+            A, mu, sigma = params[i], params[i+1], params[i+2]
+            y += A * np.exp(-(x - mu)**2 / (2 * sigma**2))
+        return y
+
+    name = patient["name"]
+    fit_datas = []
+    for data in patient["datas"]:
+        x, y = data
+        y_fit = np.zeros_like(y)  # 用于保存拟合后的峰面积
+        peaks = np.nonzero(y)[0]  # 提取峰值位置（数组下标）
+
+        for peak in peaks:
+            A = y[peak]
+            mu = x[peak]
+            # 跟距A调整sigma
+            """
+            注意到拟合失败峰往往是孤立的、峰值较小的峰，因此采用更小的方差。试验后发现可以解决
+            """
+            if A<1000:
+                sigma = 0.0001/3
+            else:
+                sigma = 0.002/3
+            initial_params = [A, mu, sigma]
+
+            # 为加快计算，设置局部窗口拟合。窗口大小跟距峰高动态调整（大部分情况都是200）
+            window_size = int(max(50, min(200, A*100)))  
+            start = max(0, peak - window_size // 2)
+            end = min(len(x), peak + window_size // 2)
+            local_x = x[start:end]
+            local_y = y[start:end]
+
+            try:
+                popt, _ = curve_fit(multi_gaussian, local_x, local_y, p0=initial_params)
+                # 实际拟合得到的参数
+                A, mu, sigma = popt
+                # 计算面积
+                y_fit[peak] = A * sigma * np.sqrt(2 * np.pi)
+            except RuntimeError:
+                # 拟合失败，输出对应的y值和峰值位置（x）
+                print("Error y:",y[peak])
+                print(f"Failed to fit peak at position {mu}")
+
+        fit_datas.append(np.array([x, y_fit]))  # 保存拟合曲线
+
+    fit_patient = {
+        "name": name,
+        "datas": fit_datas
+    }
+    return fit_patient
+
 
 def prepare():
     all_patients_datas = get_all_patients_datas()
-    prepared_datas,resampled_datas,smoothed_datas,corrected_datas,extracted_datas,num_peaks=[],[],[],[],[],[]
+    resampled_datas,smoothed_datas,corrected_datas,extracted_datas,num_peaks,fit_datas=[],[],[],[],[],[]
     for patient in all_patients_datas:
         resampled_data = cubic_spline_resample(patient)
         resampled_datas.append(resampled_data)
@@ -184,15 +239,21 @@ def prepare():
         corrected_datas.append(corrected_data)
         extracted_data = peak_extract(corrected_data)
         extracted_datas.append(extracted_data)
-
+        fit_data = fit_peaks(extracted_data)
+        fit_datas.append(fit_data)
         # 该病人第一组数据y不为0的点数（峰值数量）
         num_peaks.append(np.sum(extracted_data["datas"][0][1] > 0))
 
-    return all_patients_datas,extracted_datas,num_peaks
+    return all_patients_datas,extracted_datas,num_peaks,fit_datas
 
 
 if __name__ == "__main__":
-    (ad,ed,num_peaks)=prepare()
-    plot_patient_data(([ed[0]]),("extracted"),get_all=False,num=1)
-    plot_patient_data((ad[0],ed[0]),("corrected","extrac"),get_all=False,num=1,xlim=(90,120))
-    print(num_peaks[0])
+    (ad,ed,num_peaks,fd)=prepare()
+    plot_patient_data((ed[0],fd[0]),("extrac","fit"),get_all=False,num=1)
+    plot_patient_data([fd[0]],["fit"],get_all=False,num=1)
+    # 检查fd[0]非0的点数和ed[0]非0的点数是否相等
+    for i in range(6):
+        for j in range(5):
+            # 第Pi个患者第j组数据的非0点数
+            print("第P{}个患者第{}组非0点数：".format(i+1,j+1),np.sum(ed[i]["datas"][j][1] > 0))
+            print("第P{}个患者第{}组数据的峰损失：".format(i+1,j+1),np.sum(ed[i]["datas"][j][1] > 0)-np.sum(fd[i]["datas"][j][1] > 0))

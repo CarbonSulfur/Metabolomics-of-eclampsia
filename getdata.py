@@ -56,7 +56,7 @@ def get_all_patients_datas():
     cols = ["P"]
     all_patients_datas = []  # 使用列表存储每个患者的数据
     for col in cols:
-        for i in range(1, 2):
+        for i in range(1, 25):
             datas = get_datas(col + str(i), get_all=True)
             if datas:
                 # 将每个患者的数据存储为字典
