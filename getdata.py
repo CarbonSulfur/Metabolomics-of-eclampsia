@@ -52,11 +52,21 @@ def get_all_patients_datas():
     col: 列名
     index: 行号
     """
-    # cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
-    cols = ["P"]
+    cols = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"]
+    # cols = ["P"]
     all_patients_datas = []  # 使用列表存储每个患者的数据
+    """
+    all_patients_datas 是一个列表，元素类型为：
+    patient = {
+        "name":患者编号,如A1, B2, C3, ...
+        "datas":[
+            data1,data2,data3,data4,data5
+            #注：data1 = np.array([x1, y1])
+        ]
+    }
+    """
     for col in cols:
-        for i in range(1, 25):
+        for i in range(1, 27):
             datas = get_datas(col + str(i), get_all=True)
             if datas:
                 # 将每个患者的数据存储为字典
@@ -68,5 +78,3 @@ def get_all_patients_datas():
 
 if __name__ == "__main__":
     gapd=get_all_patients_datas()
-    print(gapd)
-    print(gapd)

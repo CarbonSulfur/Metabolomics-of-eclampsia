@@ -16,8 +16,20 @@ import matplotlib.pyplot as plt
 
 def plot_patient_data(patient_datas, datas_labels,get_all=False, num=0,xlim=None):
     """
-    绘制单个患者的折线图
-    :param patient_data: 单个患者的数据字典，包含 "name" 和 "datas"
+    调试用，绘制单个患者的折线图
+    patient_datas=[patient_data1, patient_data2, ...]
+    patient_data = {
+        "name": "患者编号",
+        "datas": [
+            [x1, y1],
+            [x2, y2],
+            ...
+        ]
+    }
+    get_all: 是否绘制所有五组数据，默认为 False
+    num: 只绘制该患者的第几组数据，1~5.
+    xlim: x轴范围，默认为(0, 1000)（全集）
+    datas_labels: 图例，长度与患者数据相同
     """
     if(xlim==None):
         xlim=(0,1000)
@@ -37,7 +49,7 @@ def plot_patient_data(patient_datas, datas_labels,get_all=False, num=0,xlim=None
                 x = x[mask]
                 y = y[mask]
                 plt.plot(x, y, label=labels[j], linewidth=linewidth)  # 绘制折线图
-                j=j+1
+            j=j+1
     else:
         j=0
         for patient_data in patient_datas:
@@ -51,14 +63,13 @@ def plot_patient_data(patient_datas, datas_labels,get_all=False, num=0,xlim=None
             plt.plot(x, y, label=labels[j], linewidth=linewidth)
             j=j+1
 
-    plt.xlabel("X轴")
-    plt.ylabel("Y轴")
-    plt.title(f"{name} 折线图")
+    plt.xlabel("X-axis")
+    plt.ylabel("Y-axis")
     plt.legend()
     plt.grid(True)
     plt.show()
 
-
+# 重采样对结果基本没有影响
 def cubic_spline_resample(patient):
     resampled_datas=[]
     datas = patient["datas"]
@@ -66,7 +77,7 @@ def cubic_spline_resample(patient):
         x, y = data
         cs = CubicSpline(x, y)
         y_new = cs(x)
-        data = np.array([x, y])
+        data = np.array([x, y_new])
         resampled_datas.append(data)
     resampled_patient={
         "name": patient["name"],
@@ -74,10 +85,18 @@ def cubic_spline_resample(patient):
     }
     return resampled_patient
 
+
 def wavelet_smooth(patient):
     """
     使用 db4 小波对患者数据进行 4 层分解并平滑
-    :param patient: 包含 "name" 和 "datas" 的患者数据字典
+    patient = {
+        "name": "患者编号",
+        "datas": [
+            [x1, y1],
+            [x2, y2],
+            ...
+        ]
+    }
     :return: 平滑后的患者数据字典
     """
     smoothed_datas = []
@@ -153,6 +172,7 @@ def peak_extract(patient):
         peaks = ((left_derivative > 0) & (right_derivative < 0)).nonzero()[0]
         for peak in peaks:
             # 计算局部信噪比
+            # 在峰值较小的时候需要较小的窗口，不然会导致噪声过大，峰值提不出来。
             if(x[peak]<=300):
                 window = 500
             else:
@@ -162,6 +182,7 @@ def peak_extract(patient):
             snr = local_signal / local_noise
             if snr > min_snr:
                 mask[peak] = 1
+        # 确定mask后，在y上提取数据，注意不是y_sharpend
         extracted_data = mask*y
         extracted_datas.append(np.array([x, extracted_data]))
 
@@ -227,33 +248,31 @@ def fit_peaks(patient):
     return fit_patient
 
 
-def prepare():
-    all_patients_datas = get_all_patients_datas()
+def prepare(patient_data=None):
+    if(patient_data):
+        all_patients_datas = [patient_data] # 和其他患者的数据格式一致，只有一个患者也用list
+    else:
+        all_patients_datas = get_all_patients_datas()
+    # 原来用于预处理参考图谱，现在修改算法后不需要了，但也不用改了。
+    # 可以将ifelse直接换成else里的内容。
+    
     resampled_datas,smoothed_datas,corrected_datas,extracted_datas,num_peaks,fit_datas=[],[],[],[],[],[]
     for patient in all_patients_datas:
+        print("正在预处理患者数据：", patient["name"])
         resampled_data = cubic_spline_resample(patient)
-        resampled_datas.append(resampled_data)
+        resampled_datas.append(resampled_data)  # 重采样
         smoothed_data = wavelet_smooth(resampled_data)
-        smoothed_datas.append(smoothed_data)
+        smoothed_datas.append(smoothed_data)    # 小波平滑
         corrected_data = baseline_correct(smoothed_data)
-        corrected_datas.append(corrected_data)
+        corrected_datas.append(corrected_data)  # 基线调整
         extracted_data = peak_extract(corrected_data)
-        extracted_datas.append(extracted_data)
+        extracted_datas.append(extracted_data)  # 峰值提取
         fit_data = fit_peaks(extracted_data)
-        fit_datas.append(fit_data)
-        # 该病人第一组数据y不为0的点数（峰值数量）
-        num_peaks.append(np.sum(extracted_data["datas"][0][1] > 0))
-
-    return all_patients_datas,extracted_datas,num_peaks,fit_datas
-
+        fit_datas.append(fit_data)  # 多峰高斯拟合
+    if patient_data:
+        return fit_data
+    else:
+        return fit_datas
 
 if __name__ == "__main__":
-    (ad,ed,num_peaks,fd)=prepare()
-    plot_patient_data((ed[0],fd[0]),("extrac","fit"),get_all=False,num=1)
-    plot_patient_data([fd[0]],["fit"],get_all=False,num=1)
-    # 检查fd[0]非0的点数和ed[0]非0的点数是否相等
-    for i in range(6):
-        for j in range(5):
-            # 第Pi个患者第j组数据的非0点数
-            print("第P{}个患者第{}组非0点数：".format(i+1,j+1),np.sum(ed[i]["datas"][j][1] > 0))
-            print("第P{}个患者第{}组数据的峰损失：".format(i+1,j+1),np.sum(ed[i]["datas"][j][1] > 0)-np.sum(fd[i]["datas"][j][1] > 0))
+    fd=prepare()
