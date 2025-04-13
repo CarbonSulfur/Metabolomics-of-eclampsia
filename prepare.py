@@ -49,7 +49,7 @@ def plot_patient_data(patient_datas, datas_labels,get_all=False, num=0,xlim=None
                 x = x[mask]
                 y = y[mask]
                 plt.plot(x, y, label=labels[j], linewidth=linewidth)  # 绘制折线图
-            j=j+1
+                j=j+1
     else:
         j=0
         for patient_data in patient_datas:
@@ -69,7 +69,6 @@ def plot_patient_data(patient_datas, datas_labels,get_all=False, num=0,xlim=None
     plt.grid(True)
     plt.show()
 
-# 重采样对结果基本没有影响
 def cubic_spline_resample(patient):
     resampled_datas=[]
     datas = patient["datas"]
@@ -79,10 +78,10 @@ def cubic_spline_resample(patient):
         y_new = cs(x)
         data = np.array([x, y_new])
         resampled_datas.append(data)
-    resampled_patient={
-        "name": patient["name"],
-        "datas": resampled_datas
-    }
+        resampled_patient={
+            "name": patient["name"],
+            "datas": resampled_datas
+        }
     return resampled_patient
 
 
@@ -90,12 +89,12 @@ def wavelet_smooth(patient):
     """
     使用 db4 小波对患者数据进行 4 层分解并平滑
     patient = {
-        "name": "患者编号",
-        "datas": [
-            [x1, y1],
-            [x2, y2],
-            ...
-        ]
+    "name": "患者编号",
+    "datas": [
+        [x1, y1],
+        [x2, y2],
+        ...
+    ]
     }
     :return: 平滑后的患者数据字典
     """
@@ -112,7 +111,6 @@ def wavelet_smooth(patient):
         denoised_coeffs = [coeffs[0]]  # 保留近似系数（低频）
         for i in range(1, level + 1):
             denoised_coeffs.append(pywt.threshold(coeffs[i], threshold, mode='soft'))
-
         # 重构信号
         y_smooth = pywt.waverec(coeffs, 'db4')
         # 确保重构后的数据长度与原始数据一致
@@ -203,44 +201,54 @@ def fit_peaks(patient):
 
     name = patient["name"]
     fit_datas = []
+    i=1
     for data in patient["datas"]:
         x, y = data
+        i+=1
         y_fit = np.zeros_like(y)  # 用于保存拟合后的峰面积
-        peaks = np.nonzero(y)[0]  # 提取峰值位置（数组下标）
-
-        for peak in peaks:
-            A = y[peak]
-            mu = x[peak]
-            # 跟距A调整sigma
-            """
-            注意到拟合失败峰往往是孤立的、峰值较小的峰，因此采用更小的方差。试验后发现可以解决
-            """
-            if A<1000:
-                sigma = 0.0001/3
-            else:
-                sigma = 0.002/3
-            initial_params = [A, mu, sigma]
-
-            # 为加快计算，设置局部窗口拟合。窗口大小跟距峰高动态调整（大部分情况都是200）
-            window_size = int(max(50, min(200, A*100)))  
-            start = max(0, peak - window_size // 2)
-            end = min(len(x), peak + window_size // 2)
+        window_size = 1000
+        starts = np.arange(0,len(x),window_size)
+        for start in starts:
+            end = min(len(x), start + window_size)
             local_x = x[start:end]
             local_y = y[start:end]
+            initial_params = []
+            lower_bounds = []
+            upper_bounds = []
+            peaks = np.nonzero(local_y)[0]
+            for peak in peaks:
+                A = local_y[peak]
+                mu = local_x[peak]
+                # 跟距A调整sigma
+                # if A<1000:
+                #     sigma = 0.0001/3
+                # else:
+                #     sigma = 0.002/3
+                # 动态调整 sigma 的初始值
+                sigma = 0.001
+                initial_params.append([A, mu, sigma])
+                lower_bounds.append([0, local_x[0], 0.000001])  # A≥0, mu±0.1, sigma≥0.0001
+                upper_bounds.append([np.inf, local_x[-1], 2])
+            initial_params = np.array(initial_params).flatten()
+            lower_bounds = np.array(lower_bounds).flatten()
+            upper_bounds = np.array(upper_bounds).flatten()
 
+            if not np.all((initial_params >= lower_bounds) & (initial_params <= upper_bounds)):
+                initial_params = np.clip(initial_params, lower_bounds, upper_bounds)
+            if(len(initial_params)==0):
+                continue
             try:
-                popt, _ = curve_fit(multi_gaussian, local_x, local_y, p0=initial_params)
-                # 实际拟合得到的参数
-                A, mu, sigma = popt
-                # 计算面积
-                y_fit[peak] = A * sigma * np.sqrt(2 * np.pi)
+                if len(local_x) != len(local_y):
+                    raise ValueError("数据长度不匹配")
+                if len(initial_params) ==0:
+                    raise ValueError("需要3个初始参数")
+                popt, _ = curve_fit(multi_gaussian, local_x, local_y, p0=initial_params,bounds=(lower_bounds, upper_bounds))
+                for i in range(0,len(popt),3):
+                    A, mu, sigma = popt[i], popt[i+1], popt[i+2]
+                    y_fit[start+peaks[i//3]] = max(0,A)
             except RuntimeError:
-                # 拟合失败，输出对应的y值和峰值位置（x）
-                print("Error y:",y[peak])
                 print(f"Failed to fit peak at position {mu}")
-
         fit_datas.append(np.array([x, y_fit]))  # 保存拟合曲线
-
     fit_patient = {
         "name": name,
         "datas": fit_datas
@@ -255,7 +263,6 @@ def prepare(patient_data=None):
         all_patients_datas = get_all_patients_datas()
     # 原来用于预处理参考图谱，现在修改算法后不需要了，但也不用改了。
     # 可以将ifelse直接换成else里的内容。
-    
     resampled_datas,smoothed_datas,corrected_datas,extracted_datas,num_peaks,fit_datas=[],[],[],[],[],[]
     for patient in all_patients_datas:
         print("正在预处理患者数据：", patient["name"])

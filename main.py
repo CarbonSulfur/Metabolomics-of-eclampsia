@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from match import peak_match
+from normalize import normalize
 
 def plot_correlation_heatmap(prepared_datas, corrected_datas):
     def calculate_correlations(datas):
@@ -93,15 +94,15 @@ def save_data(reference_data, corrected_datas):
     
     # 对于>600所有峰值不明显的，删除列。
     # 所以feature_num可能会比总的列数还大
-    cols_to_drop = []
-    for col in df2.columns:
-        if col not in ['id', 'label', 'total_y', 'feature_num']:
-            if df1[col].sum() < 10:
-                cols_to_drop.append(col)
+    # cols_to_drop = []
+    # for col in df2.columns:
+    #     if col not in ['id', 'label', 'total_y', 'feature_num']:
+    #         if df1[col].sum() < 10:
+    #             cols_to_drop.append(col)
                 
-    df1 = df1.drop(columns=cols_to_drop)
-    df2 = df2.drop(columns=cols_to_drop)
-    df3 = df3.drop(columns=cols_to_drop)
+    # df1 = df1.drop(columns=cols_to_drop)
+    # df2 = df2.drop(columns=cols_to_drop)
+    # df3 = df3.drop(columns=cols_to_drop)
 
     save_path = make_path("corrected", "xlsx")
     df1.to_excel(save_path, index=False)
@@ -115,7 +116,8 @@ def save_data(reference_data, corrected_datas):
     
 if __name__ == "__main__":
     prepared_datas, reference_data,corrected_datas = peak_match()
+    normed_datas = normalize(corrected_datas)
     # 保存数据
-    save_data(reference_data, corrected_datas)
+    save_data(reference_data, normed_datas)
     # 绘制相关系数热图
     # plot_correlation_heatmap(prepared_datas, corrected_datas)

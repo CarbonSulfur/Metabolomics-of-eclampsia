@@ -66,7 +66,7 @@ def get_all_patients_datas():
     }
     """
     for col in cols:
-        for i in range(1, 27):
+        for i in range(1, 26):
             datas = get_datas(col + str(i), get_all=True)
             if datas:
                 # 将每个患者的数据存储为字典
